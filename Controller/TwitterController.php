@@ -1,6 +1,6 @@
 <?php
-class TwitterController extends AppController {
 
+class TwitterController extends TwitterAppController {
 /**
  * Name
  *
@@ -13,7 +13,7 @@ class TwitterController extends AppController {
  * 
  * @var string
  */
-	public $uses = '';
+	public $uses = array('User'); //Errors will be thrown if this is a string
 	
 /**
  * Consumer Secret from Twitter App
@@ -30,12 +30,13 @@ class TwitterController extends AppController {
  * @var string
  */
 	public $consumerSecret = '';
+
 /**
  * Plugin that contains the model that saves authorization values. 
  * 
  * @var string
  */
-	public $savePlugin = 'Users';
+	public $savePlugin = '';
 	
 /**
  * Model to save authorization values to. 
@@ -43,7 +44,7 @@ class TwitterController extends AppController {
  * 
  * @var string
  */
-	public $saveModel = 'UserConnect';
+	public $saveModel = 'User';
 	
 /**
  * components
@@ -51,6 +52,13 @@ class TwitterController extends AppController {
  * @var string
  */
 	public $components = array('Twitter.Twitter');
+
+/**
+ * helpers
+ * 
+ * @var string
+ */
+	public $helpers = array('Session');
 	
 /**
  * Controller construct (loads config file)
@@ -64,13 +72,65 @@ class TwitterController extends AppController {
 		$this->consumerSecret = Configure::read('Twitter.consumerSecret');
 	}
 	
+	
+/**
+ * Save the user data to the application.
+ * Configure the saveModel and savePlugin at the top of this controller.
+ * 
+ * @return bool
+ * @todo 	Make this model name variable so that anyone using this plugin can easily change the table it saves data to.
+ */
+	protected function _connectUser($profileData, $verifier, $token) {
+		if (!empty($this->saveModel)) {
+			//debug($profileData);
+
+			if(isset($this->current_user['id'])){
+				//Update the user's account with the profileData 
+				if(!empty($profileData['profile'])){
+					$data = array(
+						'id' => intval($this->current_user['id']),
+						'twitter_id' => $profileData['profile']['id'],
+						'twitter_oauth_token' => $profileData['oauth_token'],
+						'twitter_oauth_token_secret' => $profileData['oauth_token_secret'],
+						'oauth_uid' => $token,
+						'oauth_provider' => $verifier
+					);
+					//Fill in some data that may be empty
+					if(empty($this->current_user['name'])) $data['name'] = $profileData['profile']['name'];
+					if(empty($this->current_user['url'])) $data['name'] = $profileData['profile']['url'];
+					if(empty($this->current_user['about'])) $data['about'] = $profileData['profile']['description'];
+					if(empty($this->current_user['profile_image_url'])) $data['profile_image_url'] = $profileData['profile']['profile_image_url'];
+					
+					//Check the data and save
+					if(!empty($data)){
+						if($this->User->save($data,array('validate'=>false))){
+							//Update the user session
+							$user = $this->User->read(null,$this->current_user['id']);
+							if(!empty($user)){
+								$this->Session->write('Auth.User',$user['User']); //Update the session
+								$this->current_user = $this->Auth->user();
+							}
+							return true;
+						}else{
+							return false;
+						}
+					}
+				}
+			}
+		} else {
+			return true;
+		}
+	}
+
 /**
  * connect method
  */
 	public function connect() {
-		CakeSession::delete('Twitter.User');
+		if($this->Session->check('Twitter.User')){
+			CakeSession::delete('Twitter.User');
+		}
 		if (!empty($this->consumerKey) && !empty($this->consumerSecret)) {
-			$this->Twitter->setupApp($this->consumerKey, $this->consumerSecret); 
+			$this->Twitter->setupApp($this->consumerKey, $this->consumerSecret);
 			$this->Twitter->connectApp(Router::url(array('action' => 'authorization'), true));
 		} else {
 			echo 'App key and secret key are not set';
@@ -85,26 +145,29 @@ class TwitterController extends AppController {
 		if (!empty($this->request->query['oauth_token']) && !empty($this->request->query['oauth_verifier'])) {
 			$this->Twitter->authorizeTwitterUser($this->request->query['oauth_token'], $this->request->query['oauth_verifier']);
 			# connect the user to the application
-			try {
+			/*try {
 				$user = $this->Twitter->getTwitterUser(true);
 				$this->_connectUser($user, $this->request->query['oauth_verifier'], $this->request->query['oauth_token']);
 				$this->Session->setFlash('Test status message sent.');
-				$this->redirect(array('action' => 'dashboard'));
+				$this->redirect(array('plugin'=>false,'controller'=>'users','action' => 'edit_social_connections'));
 			} catch (Exception $e) {
 				$this->Session->setFlash($e->getMessage());
-				$this->redirect(array('action' => 'dashboard'));
-			}
+				$this->redirect(array('plugin'=>false,'controller'=>'users','action' => 'edit_social_connections'));
+			}*/
+			$user = $this->Twitter->getTwitterUser(true);
+			$this->_connectUser($user, $this->request->query['oauth_verifier'], $this->request->query['oauth_token']);
+			$this->redirect(array('plugin'=>false,'controller'=>'users','action' => 'edit_social_connections'));
 		} else {
 			$this->Session->setFlash('Invalid authorization request.');
-			$this->redirect(array('action' => 'dashboard'));
+			$this->redirect(array('plugin'=>false,'controller'=>'users','action' => 'edit_social_connections'));
 		}
 	}
-	
+
 /**
  * dashboard method
  * 
  */
-	public function dashboard() {
+	/*public function dashboard() {
 		if (!empty($this->request->data['Twitter']['status'])) {
 			if ($this->Twitter->updateStatus($this->request->data['Twitter']['status'])) {
 				$this->Session->setFlash('Status updated.');
@@ -112,7 +175,6 @@ class TwitterController extends AppController {
 				$this->Session->setFlash('Status update failed');
 			}			
 		}
-		
 		
 		$status = true;
 		$reload = false;
@@ -148,33 +210,6 @@ class TwitterController extends AppController {
 			}
 		}
 		$this->set(compact('status', 'reload', 'credentialCheck', 'user')); 
-	}
-	
-/**
- * Save the user data to the application.
- * Configure the saveModel and savePlugin at the top of this controller.
- * 
- * @return bool
- * @todo 	Make this model name variable so that anyone using this plugin can easily change the table it saves data to.
- */
-	protected function _connectUser($profileData, $token, $verifier) {
-		if (!empty($this->saveModel)) {
-			App::uses($this->saveModel, $this->savePlugin . '.Model');
-			$UserConnect = new UserConnect;
-			$data['UserConnect']['type'] = 'twitter';
-			$data['UserConnect']['value'] = serialize(array_merge(array('token' => $token), array('verifier' => $verifier), $profileData));
-		
-			if ($UserConnect->add($data)) {
-				if ($this->Twitter->updateStatus('I just connected my Zuha website to Twitter. @GetZuha')) {
-					return true;
-				} else {
-					throw new Exception(__('test status message failed'));
-				}
-			} else {
-				throw new Exception(__('no user to tie this twitter account to (probably need to auto create a user on our end'));
-			}
-		} else {
-			return true;
-		}
-	}
+	}*/
+
 }	

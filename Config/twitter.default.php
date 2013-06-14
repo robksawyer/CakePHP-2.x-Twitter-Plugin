@@ -1,4 +1,9 @@
-<?php
-$config = '';
-Configure::write('Twitter.consumerKey', 'enter your twitter app consumer key here');
-Configure::write('Twitter.consumerSecret', 'enter your twitter app consumer secret code here');
+<?php 
+$config = array(
+	'Twitter' => array(
+		'version' => '1.1',
+		'consumerKey' => getenv('TWITTER_CONSUMER_KEY'),
+		'consumerSecret' => getenv('TWITTER_CONSUMER_SECRET')
+	)
+);
+?>

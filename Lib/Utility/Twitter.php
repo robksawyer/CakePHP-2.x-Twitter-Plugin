@@ -375,7 +375,7 @@ class Twitter extends Object {
 			//Set the request body
 			$request['body'] = $body;
 		}
-		debug($request);
+		//debug($request);
 		//Return
 		return $this->Oauth->request($request);
 	}

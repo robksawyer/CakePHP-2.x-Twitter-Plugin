@@ -84,11 +84,11 @@ class TwitterController extends TwitterAppController {
 		if (!empty($this->saveModel)) {
 			//debug($profileData);
 
-			if(isset($this->current_user['id'])){
+			if(isset($this->current_user['User']['id'])){
 				//Update the user's account with the profileData 
 				if(!empty($profileData['profile'])){
 					$data = array(
-						'id' => intval($this->current_user['id']),
+						'id' => intval($this->current_user['User']['id']),
 						'twitter_id' => $profileData['profile']['id'],
 						'twitter_oauth_token' => $profileData['oauth_token'],
 						'twitter_oauth_token_secret' => $profileData['oauth_token_secret'],
@@ -96,19 +96,29 @@ class TwitterController extends TwitterAppController {
 						'oauth_provider' => $verifier
 					);
 					//Fill in some data that may be empty
-					if(empty($this->current_user['name'])) $data['name'] = $profileData['profile']['name'];
-					if(empty($this->current_user['url'])) $data['name'] = $profileData['profile']['url'];
-					if(empty($this->current_user['about'])) $data['about'] = $profileData['profile']['description'];
-					if(empty($this->current_user['profile_image_url'])) $data['profile_image_url'] = $profileData['profile']['profile_image_url'];
+					if(empty($this->current_user['User']['name'])) $data['name'] = $profileData['profile']['name'];
+					if(empty($this->current_user['User']['url'])) $data['name'] = $profileData['profile']['url'];
+					if(empty($this->current_user['User']['about'])) $data['about'] = $profileData['profile']['description'];
+					if(empty($this->current_user['User']['profile_image_url'])) $data['profile_image_url'] = $profileData['profile']['profile_image_url'];
 					
 					//Check the data and save
 					if(!empty($data)){
 						if($this->User->save($data,array('validate'=>false))){
 							//Update the user session
-							$user = $this->User->read(null,$this->current_user['id']);
+							$user = $this->User->find('first', array(
+								'conditions' => array(
+									'User.id' => $this->current_user['User']['id']
+								),
+								'contain' => array(
+									'UserFollower', 'Attachment', 'StateRegion','Country',
+								),
+								'recursive' => -1
+							));
 							if(!empty($user)){
-								$this->Session->write('Auth.User',$user['User']); //Update the session
-								$this->current_user = $this->Auth->user();
+								//Delete cached user
+								Cache::delete('current_user_' . $this->current_user['User']['id'], 'hour');
+								$this->Session->write('Auth.User', $user['User']); //Update the session
+								$this->current_user = $user;
 							}
 							return true;
 						}else{

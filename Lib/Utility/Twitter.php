@@ -245,7 +245,11 @@ class Twitter extends Object {
  */
 	public function initialize($settings = array()) {
 		//Open a new OAuthSocket
-		$this->Oauth = new HttpSocketOauth();
+		if(class_exists('HttpSocketOauth')) {
+			$this->Oauth = new HttpSocketOauth();
+		}else{
+			return false;
+		}
 		$this->response = new CakeResponse(array('charset' => Configure::read('App.encoding')));
 		if ($this->status() == false) {
 			//Check app status
